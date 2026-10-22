@@ -19,6 +19,7 @@ def initialize_fluxes(
     ρ_0: float = 1025.0,
     g: float = -9.81,
     lat: float = 60.0,
+    geometry: str = "line"
 ) -> Tuple[float]:
     """Calculate initial conditions for plume mass, momentum, temperature and salinity fluxes
     for given ocean parameters.
@@ -47,7 +48,8 @@ def initialize_fluxes(
             Gravitational constant (m s-2), default -9.81.
         lat : float, optional
             Latitude used in the pressure calculation, default 60 (degree_north).
-
+        geometry : str, optional
+            Initialize plume with a line (default) or point geometry.
     Returns
     -------
         mass_flux : float
@@ -63,7 +65,13 @@ def initialize_fluxes(
         T_o = T
         S_o = S
 
-    Qm2s = Q / W  # Discharge rate per m (m2 s-1)
+    if geometry == "line":
+        q = Q / W  # Discharge rate per m (m2 s-1)
+    elif geometry == "point":
+        q = Q # Total discharge rate (m3 s-1)
+    else:
+        raise ValueError(f"geometry must be 'point' or 'line', got {geometry!r}")
+    
     pi = sw.pres(-z, lat)  # Pressure (dbar)
     Tp = sw.fp(Sp, pi)  # Plume temperature is the freezing point (C)
     ρi = sw.pden(S_o, T_o, pi, pr=0)  # Far-field ocean density (kg m-3)
@@ -71,13 +79,19 @@ def initialize_fluxes(
     gpi = g * (ρ_oi - ρi) / ρ_0  # Reduced gravity (m s-2)
     # Vertical velocity (m s-1), from a balance of momentum and buoyancy
     # for a line plume
-    wi = (gpi * Qm2s / α) ** (1 / 3)
-    Ri = Qm2s / wi  # Radius or thickness (m)
+    wi = (gpi * q / α) ** (1 / 3)
+    
+    if geometry == "point":
+        Ri = (2 * q / (np.pi * wi)) ** (1 / 2) # Radius or thickness (m)
+    else:
+        Ri = q / wi  # Radius or thickness (m)
 
-    mass_flux = Qm2s  # Mass flux (m2 s-1)
-    mom_flux = Qm2s * wi  # Momentum flux (m3 s-2)
-    T_flux = Qm2s * Tp  # Temperature flux (C m2 s-1)
-    S_flux = Qm2s * Sp  # Salt flux (PSU m2 s-1)
+    # note: all flux units multiplied by [m] for point plume
+    # balanced by factor R [m] in point bpt eqns
+    mass_flux = q  # Mass flux (m2 s-1)
+    mom_flux = q * wi  # Momentum flux (m3 s-2)
+    T_flux = q * Tp  # Temperature flux (C m2 s-1)
+    S_flux = q * Sp  # Salt flux (PSU m2 s-1)
 
     return mass_flux, mom_flux, T_flux, S_flux
 
@@ -128,6 +142,7 @@ def plume(
     ρ_0: float = 1025.0,
     g: float = -9.81,
     lat: float = 60.0,
+    geometry: str = "line",
 ) -> Tuple[np.array]:
     """Solve the buoyant plume theory equations.
 
@@ -162,6 +177,8 @@ def plume(
             Gravitational constant (m s-2), default -9.81.
         lat : float, optional
             Latitude used in the pressure calculation, default 60 (degree_north).
+        geometry : str, optional
+            Initialize plume with a line (default) or point geometry.
 
     Returns
     -------
@@ -178,7 +195,7 @@ def plume(
     """
     fluxes0 = initialize_fluxes(z, Q, T, S, W, α, Sp, ρ_0, g, lat)
 
-    args = (T, S, u, α, ρ_0, g, lat)
+    args = (T, S, u, α, ρ_0, g, lat, geometry)
 
     z_eval = np.arange(np.ceil(z / dz) * dz, z_max - dz / 2, dz)
 

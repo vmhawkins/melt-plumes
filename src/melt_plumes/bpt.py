@@ -1,6 +1,7 @@
 from typing import Callable, List, Sequence, Tuple, Union
 
 import seawater as sw
+import numpy as np
 
 
 def fp(
@@ -118,6 +119,7 @@ def bpt(
     ρ_0: float = 1025.0,
     g: float = -9.81,
     lat: float = 60.0,
+    geometry: str = "line",
     Γ_T: float = 0.022,
     Γ_S: float = 0.00062,
     C_d: float = 0.0025,
@@ -148,6 +150,8 @@ def bpt(
             Gravitational constant, default -9.81 (m s-2).
         lat : float, optional
             Latitude used in the pressure calculation, default 60 (degree_north).
+        geometry : str, optional
+            Initialize plume with a line (default) or point geometry.
         Γ_T : float, optional
             Turbulent transfer coefficient for temperature, default 0.022 .
         Γ_S : float, optional
@@ -199,10 +203,18 @@ def bpt(
     gp = g * (ρ_o - ρ) / ρ_0  # Reduced gravity (m s-2)
 
     dfluxes = [0, 0, 0, 0]
-    dfluxes[0] = α * w + m  # Mass
-    dfluxes[1] = R * gp - C_d * w**2  # Momentum
-    dfluxes[2] = α * w * T_o + m * T_b - C_d**0.5 * U * Γ_T * (T_p - T_b)  # Temperature
-    dfluxes[3] = α * w * S_o + m * S_b - C_d**0.5 * U * Γ_S * (S_p - S_b)  # Salinity
+    if geometry == "line":
+        dfluxes[0] = α * w + m  # Mass
+        dfluxes[1] = R * gp - C_d * w**2  # Momentum
+        dfluxes[2] = α * w * T_o + m * T_b - C_d**0.5 * U * Γ_T * (T_p - T_b)  # Temperature
+        dfluxes[3] = α * w * S_o + m * S_b - C_d**0.5 * U * Γ_S * (S_p - S_b)  # Salinity
+    elif geometry == "point":
+        dfluxes[0] = 2 * α * R * w + 4 * R * m / np.pi  # Mass
+        dfluxes[1] = R**2 * gp - 4 * C_d * R * w**2 / np.pi  # Momentum
+        dfluxes[2] = 2 * α * R * w * T_o + 4 * m * R * T_b / np.pi - 4 * C_d**0.5 * R * U * Γ_T * (T_p - T_b) / np.pi  # Temperature
+        dfluxes[3] = 2 * α * R * w * S_o + 4 * m * R * S_b / np.pi - 4 * C_d**0.5 * R * U * Γ_S * (S_p - S_b) / np.pi  # Salinity
+    else:
+        raise ValueError(f"geometry must be 'point' or 'line', got {geometry!r}")
     return dfluxes
 
 
