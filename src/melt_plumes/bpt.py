@@ -224,8 +224,11 @@ def Δρ(
     T: Union[float, Callable[[float], float]],
     S: Union[float, Callable[[float], float]],
     u: Union[float, Callable[[float], float]] = 0.0,
+    α: float = 0.1,
+    ρ_0: float = 1025.0,
+    g: float = -9.81,
     lat: float = 60.0,
-    *args,
+    geometry: str = "line", 
 ) -> float:
     """Density difference between plume and ocean."""
     T_p = fluxes[2] / fluxes[0]  # Plume temperature (C)
@@ -244,6 +247,7 @@ def Δρ(
         S_o, T_o, p, pr=0
     )  # Ocean (far-field) potential density (kg m-3)
     return ρ - ρ_o
+
 
 
 # These attributes are used by scipy.integrate.solve_ivp to terminate integration
