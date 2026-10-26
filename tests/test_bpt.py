@@ -3,8 +3,7 @@
 import numpy as np
 import scipy.integrate as itgr
 import scipy.interpolate as itpl
-import seawater as sw
-import pytest
+import pytest 
 
 from melt_plumes import bpt, helpers, solve
 
@@ -26,10 +25,10 @@ def test_plume_stratified_ocean_without_melt() -> None:
     T = itpl.interp1d(-d, T)
 
     w, R, T_o, S_o, z_out = solve.plume(-165, 100, 0.5, -d[0], T, S)
-    np.testing.assert_allclose(w[-1], 1.0694846682525059, rtol=1e-4)
-    np.testing.assert_allclose(R[-1], 19.458316949436956, rtol=1e-4)
-    np.testing.assert_allclose(T_o[-1], 7.038140255058137, rtol=1e-4)
-    np.testing.assert_allclose(S_o[-1], 26.881824068698358, rtol=1e-4)
+    np.testing.assert_allclose(w[-1], 1.070334463, rtol=1e-4) # sw: 1.069484668
+    np.testing.assert_allclose(R[-1], 19.44629207, rtol=1e-4) # sw: 19.45831695
+    np.testing.assert_allclose(T_o[-1], 7.038240299, rtol=1e-4) # sw: 7.038140255
+    np.testing.assert_allclose(S_o[-1], 26.87992446, rtol=1e-4) # sw: 26.88182407
 
 
 def test_melt_rate() -> None:

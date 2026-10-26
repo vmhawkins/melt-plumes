@@ -2,7 +2,7 @@ from textwrap import dedent
 from typing import Callable, Tuple, Union
 
 import numpy as np
-import seawater as sw
+import gsw
 from scipy.integrate import solve_ivp
 
 from . import bpt
@@ -19,6 +19,7 @@ def initialize_fluxes(
     ρ_0: float = 1025.0,
     g: float = -9.81,
     lat: float = 60.0,
+    lon: float = -130.0,
     geometry: str = "line"
 ) -> Tuple[float]:
     """Calculate initial conditions for plume mass, momentum, temperature and salinity fluxes
@@ -48,6 +49,8 @@ def initialize_fluxes(
             Gravitational constant (m s-2), default -9.81.
         lat : float, optional
             Latitude used in the pressure calculation, default 60 (degree_north).
+        lon : float, optional
+            Longitude used in the absolute salinity calculation, default -130 (degree_east).
         geometry : str, optional
             Initialize plume with a line (default) or point geometry.
     Returns
@@ -70,12 +73,14 @@ def initialize_fluxes(
     elif geometry == "point":
         q = Q # Total discharge rate (m3 s-1)
     else:
-        raise ValueError(f"geometry must be 'point' or 'line', got {geometry!r}")
+        raise ValueError(f"geometry must be 'point' or 'line', got {geometry!r}") 
     
-    pi = sw.pres(-z, lat)  # Pressure (dbar)
-    Tp = sw.fp(Sp, pi)  # Plume temperature is the freezing point (C)
-    ρi = sw.pden(S_o, T_o, pi, pr=0)  # Far-field ocean density (kg m-3)
-    ρ_oi = sw.pden(Sp, Tp, pi, pr=0)  # Plume density (kg m-3)
+    pi = gsw.p_from_z(z, lat)  # Pressure (dbar)
+    SAp = gsw.SA_from_SP(Sp, pi, lon, lat) # Initial plume absolute salinity
+    Tp = gsw.t_freezing(SAp, pi, saturation_fraction=0)  # Plume temperature is the freezing point (C)
+    ρ_oi = gsw.pot_rho_t_exact(SAp, Tp, pi, p_ref=0)  # Plume density (kg m-3)
+    SA_o = gsw.SA_from_SP(S_o, pi, lon, lat) # Far-field ocean absolute salinity
+    ρi = gsw.pot_rho_t_exact(SA_o, T_o, pi, p_ref=0) # Far-field ocean density (kg m-3)
     gpi = g * (ρ_oi - ρi) / ρ_0  # Reduced gravity (m s-2)
     # Vertical velocity (m s-1), from a balance of momentum and buoyancy
     # for a line plume
@@ -142,6 +147,7 @@ def plume(
     ρ_0: float = 1025.0,
     g: float = -9.81,
     lat: float = 60.0,
+    lon: float = -130.0,
     geometry: str = "line",
 ) -> Tuple[np.array]:
     """Solve the buoyant plume theory equations.
@@ -177,6 +183,8 @@ def plume(
             Gravitational constant (m s-2), default -9.81.
         lat : float, optional
             Latitude used in the pressure calculation, default 60 (degree_north).
+        lon : float, optional
+            Longitude used in the absolute salinity calculation, default -130 (degree_east).
         geometry : str, optional
             Initialize plume with a line (default) or point geometry.
 
@@ -193,9 +201,9 @@ def plume(
         z_out : numpy.array
             Evaluated heights (m).
     """
-    fluxes0 = initialize_fluxes(z, Q, T, S, W, α, Sp, ρ_0, g, lat)
+    fluxes0 = initialize_fluxes(z, Q, T, S, W, α, Sp, ρ_0, g, lat, lon, geometry)
 
-    args = (T, S, u, α, ρ_0, g, lat, geometry)
+    args = (T, S, u, α, ρ_0, g, lat, lon, geometry)
 
     z_eval = np.arange(np.ceil(z / dz) * dz, z_max - dz / 2, dz)
 

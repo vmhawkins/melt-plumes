@@ -1,6 +1,6 @@
 from typing import Callable, List, Sequence, Tuple, Union
 
-import seawater as sw
+import gsw
 import numpy as np
 
 
@@ -119,6 +119,7 @@ def bpt(
     ρ_0: float = 1025.0,
     g: float = -9.81,
     lat: float = 60.0,
+    lon: float = -130.0,
     geometry: str = "line",
     Γ_T: float = 0.022,
     Γ_S: float = 0.00062,
@@ -150,6 +151,8 @@ def bpt(
             Gravitational constant, default -9.81 (m s-2).
         lat : float, optional
             Latitude used in the pressure calculation, default 60 (degree_north).
+        lon : float, optional
+            Longitude used in the absolute salinity calculation, default -130 (degree_east).
         geometry : str, optional
             Initialize plume with a line (default) or point geometry.
         Γ_T : float, optional
@@ -197,9 +200,11 @@ def bpt(
 
     # Parameters for the ODEs
     m, T_b, S_b = melt_rate(-z, T_p, S_p, U, Γ_T=Γ_T, Γ_S=Γ_S, C_d=C_d, **melt_kwargs)
-    p = sw.pres(-z, lat)  # Pressure (dbar)
-    ρ_o = sw.pden(S_p, T_p, p, pr=0)  # Plume potential density (kg m-3)
-    ρ = sw.pden(S_o, T_o, p, pr=0)  # Ocean (far-field) potential density (kg m-3)
+    p = gsw.p_from_z(z, lat)  # Pressure (dbar)
+    SA_p = gsw.SA_from_SP(S_p, p, lon, lat) # Plume absolute salinity
+    SA_o = gsw.SA_from_SP(S_o, p, lon, lat) # Ocean absolute salinity
+    ρ_o = gsw.pot_rho_t_exact(SA_p, T_p, p, p_ref=0) # Plume potential density (kg m-3)
+    ρ = gsw.pot_rho_t_exact(SA_o, T_o, p, p_ref=0) # Ocean (far-field) potential density (kg m-3)
     gp = g * (ρ_o - ρ) / ρ_0  # Reduced gravity (m s-2)
 
     dfluxes = [0, 0, 0, 0]
@@ -228,6 +233,7 @@ def Δρ(
     ρ_0: float = 1025.0,
     g: float = -9.81,
     lat: float = 60.0,
+    lon: float = -130.0,
     geometry: str = "line", 
 ) -> float:
     """Density difference between plume and ocean."""
@@ -241,11 +247,11 @@ def Δρ(
         T_o = T
         S_o = S
 
-    p = sw.pres(-z, lat)  # Pressure (dbar)
-    ρ_o: float = sw.pden(S_p, T_p, p, pr=0)  # Plume potential density (kg m-3)
-    ρ: float = sw.pden(
-        S_o, T_o, p, pr=0
-    )  # Ocean (far-field) potential density (kg m-3)
+    p = gsw.p_from_z(z, lat)  # Pressure (dbar)
+    SA_p = gsw.SA_from_SP(S_p, p, lon, lat) # Plume absolute salinity
+    SA_o = gsw.SA_from_SP(S_o, p, lon, lat) # Ocean absolute salinity
+    ρ_o: float = gsw.pot_rho_t_exact(SA_p, T_p, p, p_ref=0)  # Plume potential density (kg m-3)
+    ρ: float = gsw.pot_rho_t_exact(SA_o, T_o, p, p_ref=0)  # Ocean (far-field) potential density (kg m-3)
     return ρ - ρ_o
 
 
