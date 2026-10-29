@@ -176,7 +176,7 @@ def bpt(
     S_flux = fluxes[3]  # Salt flux (PSU m2 s-1)
 
     w = mom_flux / mass_flux  # Plume vertical velocity (m s-1)
-    R = mass_flux / w  # Plume thickness or radius (m)
+    # R is geometry-dependent and is computed right before the dfluxes.
     T_p = T_flux / mass_flux  # Plume temperature (C)
     S_p = S_flux / mass_flux  # Plume salinity (PSU)
 
@@ -209,15 +209,17 @@ def bpt(
 
     dfluxes = [0, 0, 0, 0]
     if geometry == "line":
+        R = mass_flux / w # Plume thickness or radius (m)
         dfluxes[0] = α * w + m  # Mass
         dfluxes[1] = R * gp - C_d * w**2  # Momentum
         dfluxes[2] = α * w * T_o + m * T_b - C_d**0.5 * U * Γ_T * (T_p - T_b)  # Temperature
         dfluxes[3] = α * w * S_o + m * S_b - C_d**0.5 * U * Γ_S * (S_p - S_b)  # Salinity
     elif geometry == "point":
-        dfluxes[0] = 2 * α * R * w + 4 * R * m / np.pi  # Mass
-        dfluxes[1] = R**2 * gp - 4 * C_d * R * w**2 / np.pi  # Momentum
-        dfluxes[2] = 2 * α * R * w * T_o + 4 * m * R * T_b / np.pi - 4 * C_d**0.5 * R * U * Γ_T * (T_p - T_b) / np.pi  # Temperature
-        dfluxes[3] = 2 * α * R * w * S_o + 4 * m * R * S_b / np.pi - 4 * C_d**0.5 * R * U * Γ_S * (S_p - S_b) / np.pi  # Salinity
+        R = (2 * mass_flux / (np.pi * w)) ** (1 / 2)
+        dfluxes[0] = np.pi * α * R * w + 2 * R * m  # Mass
+        dfluxes[1] = (np.pi / 2) * R**2 * gp - 2 * C_d * R * w**2 # Momentum
+        dfluxes[2] = np.pi * α * R * w * T_o + 2 * m * R * T_b - 2 * C_d**0.5 * R * U * Γ_T * (T_p - T_b) # Temperature
+        dfluxes[3] = np.pi * α * R * w * S_o + 2 * m * R * S_b - 2 * C_d**0.5 * R * U * Γ_S * (S_p - S_b)  # Salinity
     else:
         raise ValueError(f"geometry must be 'point' or 'line', got {geometry!r}")
     return dfluxes
@@ -259,3 +261,11 @@ def Δρ(
 # These attributes are used by scipy.integrate.solve_ivp to terminate integration
 Δρ.terminal = True
 Δρ.direction = -1
+
+
+def stalled(z, fluxes, *args):
+    """Terminates plume solver if plume vertical velocity drops to zero."""
+    return fluxes[1] / fluxes[0]
+
+stalled.terminal = True
+stalled.direction = -1

@@ -67,13 +67,6 @@ def initialize_fluxes(
     else:
         T_o = T
         S_o = S
-
-    if geometry == "line":
-        q = Q / W  # Discharge rate per m (m2 s-1)
-    elif geometry == "point":
-        q = Q # Total discharge rate (m3 s-1)
-    else:
-        raise ValueError(f"geometry must be 'point' or 'line', got {geometry!r}") 
     
     pi = gsw.p_from_z(z, lat)  # Pressure (dbar)
     SAp = gsw.SA_from_SP(Sp, pi, lon, lat) # Initial plume absolute salinity
@@ -82,17 +75,20 @@ def initialize_fluxes(
     SA_o = gsw.SA_from_SP(S_o, pi, lon, lat) # Far-field ocean absolute salinity
     ρi = gsw.pot_rho_t_exact(SA_o, T_o, pi, p_ref=0) # Far-field ocean density (kg m-3)
     gpi = g * (ρ_oi - ρi) / ρ_0  # Reduced gravity (m s-2)
-    # Vertical velocity (m s-1), from a balance of momentum and buoyancy
-    # for a line plume
-    wi = (gpi * q / α) ** (1 / 3)
     
     if geometry == "point":
-        Ri = (2 * q / (np.pi * wi)) ** (1 / 2) # Radius or thickness (m)
-    else:
+        wi = 1 # assumption in Cowton 2015
+        Ri = (2 * Q / (np.pi * wi)) ** (1 / 2)
+        q = Q
+    elif geometry == "line":
+        q = Q / W # Discharge rate per m (m2 s-1)
+        wi = (gpi * q / α) ** (1 / 3) # Vertical velocity (m s-1), from a balance of momentum and buoyancy for a line plume
         Ri = q / wi  # Radius or thickness (m)
+    else:
+        raise ValueError(f"geometry must be 'point' or 'line', got {geometry!r}") 
 
-    # note: all flux units multiplied by [m] for point plume
-    # balanced by factor R [m] in point bpt eqns
+    # note: all flux units multiplied by [m] for point plume (contained in q)
+    # balanced by factor (π/2)R [m] in point bpt eqns
     mass_flux = q  # Mass flux (m2 s-1)
     mom_flux = q * wi  # Momentum flux (m3 s-2)
     T_flux = q * Tp  # Temperature flux (C m2 s-1)
@@ -101,7 +97,7 @@ def initialize_fluxes(
     return mass_flux, mom_flux, T_flux, S_flux
 
 
-def convert_fluxes(mass_flux, mom_flux, T_flux, S_flux) -> Tuple[float]:
+def convert_fluxes(mass_flux, mom_flux, T_flux, S_flux, geometry="line") -> Tuple[float]:
     """Convert flux variables to non-flux variable.
 
     Parameters
@@ -114,6 +110,8 @@ def convert_fluxes(mass_flux, mom_flux, T_flux, S_flux) -> Tuple[float]:
             Plume temperature flux (C m2 s-1).
         S_flux : float or array_like
             Plume salt flux (PSU m2 s-1).
+        geometry : str, optional
+            Initialize plume with a line (default) or point geometry.
 
     Returns
     -------
@@ -127,9 +125,14 @@ def convert_fluxes(mass_flux, mom_flux, T_flux, S_flux) -> Tuple[float]:
             Plume salinity (PSU).
     """
     w = mom_flux / mass_flux  # Plume vertical velocity (m s-1)
-    R = mass_flux / w  # Plume thickness or radius (m)
     T = T_flux / mass_flux  # Plume temperature (C)
     S = S_flux / mass_flux  # Plume salinity (PSU)
+    if geometry == "line":
+        R = mass_flux / w  # Plume thickness or radius (m)
+    elif geometry == "point":
+        R = (2 * mass_flux / (np.pi * w)) ** (1 / 2)
+    else:
+        raise ValueError(f"geometry must be 'point' or 'line', got {geometry!r}") 
     return w, R, T, S
 
 
@@ -149,6 +152,7 @@ def plume(
     lat: float = 60.0,
     lon: float = -130.0,
     geometry: str = "line",
+    to_surface: bool = False,
 ) -> Tuple[np.array]:
     """Solve the buoyant plume theory equations.
 
@@ -187,6 +191,8 @@ def plume(
             Longitude used in the absolute salinity calculation, default -130 (degree_east).
         geometry : str, optional
             Initialize plume with a line (default) or point geometry.
+        end_integration : str, optional
+            Terminate IVP solver at neutral buoyancy ("neutral", default) or at the surface ("surface")
 
     Returns
     -------
@@ -207,6 +213,12 @@ def plume(
 
     z_eval = np.arange(np.ceil(z / dz) * dz, z_max - dz / 2, dz)
 
+    events = []
+    if to_surface:
+        events.append(bpt.stalled)
+    else:
+        events.append(bpt.Δρ)
+
     result = solve_ivp(
         bpt.bpt,
         [z, z_max],
@@ -214,7 +226,7 @@ def plume(
         method="RK45",
         t_eval=z_eval,
         args=args,
-        events=bpt.Δρ,
+        events=events,
     )
 
     mass_flux = result.y[0, :]
@@ -223,7 +235,7 @@ def plume(
     S_flux = result.y[3, :]
     z_out = result.t
 
-    w, R, T_o, S_o = convert_fluxes(mass_flux, mom_flux, T_flux, S_flux)
+    w, R, T_o, S_o = convert_fluxes(mass_flux, mom_flux, T_flux, S_flux, geometry=geometry)
 
     return w, R, T_o, S_o, z_out
 
